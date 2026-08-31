@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Testbook AI Analyzer V1.5</title>
+  <style>
+    body { width: 350px; margin: 0; padding: 18px; font: 14px/1.45 system-ui, sans-serif; color: #172033; }
+    h1 { margin: 0; font-size: 19px; }
+    .sub { margin: 3px 0 14px; color: #667085; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+    .card { padding: 10px; background: #f5f7fa; border-radius: 10px; }
+    .label { color: #667085; font-size: 12px; }
+    .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+    button { width: 100%; padding: 10px 12px; margin-top: 8px; border: 0; border-radius: 8px; cursor: pointer; font-weight: 650; }
+    #auto { background: #172033; color: white; }
+    button.secondary { background: #eef2f7; color: #172033; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #quality { margin-top: 12px; padding: 10px; background: #f7f8fa; border-radius: 10px; }
+    #warnings { margin-top: 8px; color: #9a6700; white-space: pre-wrap; font-size: 12px; }
+    #status { margin-top: 12px; padding: 10px; background: #f7f8fa; border-radius: 10px; white-space: pre-wrap; }
+    #details { margin-top: 10px; max-height: 190px; overflow: auto; font-size: 12px; background: #fbfcfe; padding: 9px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Testbook AI Analyzer</h1>
+  <div class="sub">V1.5 — extraction quality first</div>
+
+  <button id="auto">Analyze full test</button>
+  <button id="scan" class="secondary">Scan current page</button>
+
+  <div class="grid">
+    <div class="card"><div class="label">Captured</div><div class="value" id="captured">—</div></div>
+    <div class="card"><div class="label">Quality</div><div class="value" id="qualityValue">—</div></div>
+    <div class="card"><div class="label">Score</div><div class="value" id="score">—</div></div>
+    <div class="card"><div class="label">Accuracy</div><div class="value" id="accuracy">—</div></div>
+  </div>
+
+  <div id="quality">No scan yet.</div>
+  <div id="warnings"></div>
+  <div id="details">Run a scan to preview the extracted dataset.</div>
+
+  <button id="export" class="secondary" disabled>Export JSON</button>
+  <button id="copy" class="secondary" disabled>Copy AI analysis prompt</button>
+  <div id="status">Ready.</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
