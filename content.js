@@ -8,7 +8,7 @@ function visible(el) {
 }
 function clean(s) { return String(s || '').replace(/\s+/g, ' ').trim(); }
 
-function clickByText(text, timeout = 4000) {
+function clickByText(text, timeout = 5000) {
   const started = Date.now();
   return new Promise((resolve, reject) => {
     const tick = () => {
@@ -36,14 +36,17 @@ function solutionVisible() {
   return [...document.querySelectorAll('li[ng-repeat*="option in getOptions"]')]
     .some(li => visible(li) && /correct-option/.test(String(li.className || '')));
 }
+
 function viewSolutionButtonExists() {
   return [...document.querySelectorAll('button, a, [role="button"]')]
     .some(el => visible(el) && /view\s+solution/i.test(clean(el.innerText || el.textContent)));
 }
+
 function nextButtonExists() {
   return [...document.querySelectorAll('button, a, [role="button"]')]
     .some(el => visible(el) && clean(el.innerText || el.textContent).toLowerCase() === 'next');
 }
+
 async function waitForQuestionChange(oldNumber, timeout = 7000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -53,6 +56,7 @@ async function waitForQuestionChange(oldNumber, timeout = 7000) {
   }
   return currentQuestionNumber();
 }
+
 async function ensureSolution() {
   if (solutionVisible()) return true;
   if (viewSolutionButtonExists()) {
@@ -66,61 +70,43 @@ async function ensureSolution() {
   return solutionVisible();
 }
 
+// Section/question navigation is owned by extractor.js so both manual and
+// automatic extraction use the same DOM heuristics.
 function getSectionTabs() {
-  const candidates = [...document.querySelectorAll('button, a, [role="button"], div, span')]
-    .filter(visible)
-    .map(el => ({ el, text: clean(el.innerText || el.textContent), r: el.getBoundingClientRect() }))
-    .filter(x => x.text && x.text.length >= 3 && x.text.length <= 45)
-    .filter(x => x.r.top >= 120 && x.r.top <= 220 && x.r.left >= 70 && x.r.left < window.innerWidth * 0.65)
-    .filter(x => !/^(SECTIONS|English|Hindi|Save|Report|Analytics|Filter)$/i.test(x.text));
-  const byText = new Map();
-  for (const x of candidates) {
-    const old = byText.get(x.text);
-    if (!old || x.r.width * x.r.height > old.r.width * old.r.height) byText.set(x.text, x);
-  }
-  return [...byText.values()].sort((a, b) => a.r.left - b.r.left).map(x => x.el).filter(el => el.parentElement);
+  return window.TestbookAnalyzer?.getSectionTabs?.() || [];
 }
-
 function currentSectionName() {
-  const heading = [...document.querySelectorAll('body *')].find(el =>
-    visible(el) && /^SECTION\s*:/i.test(clean(el.innerText || el.textContent)) && clean(el.innerText || el.textContent).length < 100
-  );
-  return heading ? clean(heading.innerText || heading.textContent).replace(/^SECTION\s*:\s*/i, '') : '';
+  return window.TestbookAnalyzer?.currentSectionName?.() || '';
 }
-
 function currentSectionQuestionCount() {
-  const heading = [...document.querySelectorAll('body *')].find(el =>
-    visible(el) && /^SECTION\s*:/i.test(clean(el.innerText || el.textContent)) && clean(el.innerText || el.textContent).length < 100
-  );
-  if (heading) {
-    let root = heading.parentElement;
-    for (let i = 0; i < 8 && root; i++, root = root.parentElement) {
-      const nums = [...root.querySelectorAll('button, a, [role="button"], div, span')]
-        .map(el => clean(el.innerText || el.textContent)).filter(t => /^\d{1,3}$/.test(t)).map(Number);
-      const unique = [...new Set(nums)];
-      if (unique.length >= 2 && unique.length <= 100) return Math.max(...unique);
-    }
-  }
-  return null;
+  return window.TestbookAnalyzer?.currentSectionQuestionCount?.() || null;
 }
 
 async function moveToNextSection(currentNumber) {
   const tabs = getSectionTabs();
-  if (tabs.length < 2) throw new Error(`Reached section end at question ${currentNumber}, but could not find the section tabs.`);
+  if (tabs.length < 2) return false;
+
   const sectionName = currentSectionName();
-  let currentIndex = sectionName ? tabs.findIndex(tab => clean(tab.innerText || tab.textContent).toLowerCase().includes(sectionName.toLowerCase())) : -1;
-  if (currentIndex < 0) currentIndex = tabs.findIndex(tab => /active|selected/i.test(String(tab.className || '')));
+  let currentIndex = sectionName
+    ? tabs.findIndex(tab => clean(tab.innerText || tab.textContent).toLowerCase() === sectionName.toLowerCase())
+    : -1;
+
+  if (currentIndex < 0) currentIndex = tabs.findIndex(tab => /active|selected|current/i.test(String(tab.className || '').toLowerCase()) || tab.getAttribute('aria-selected') === 'true');
   if (currentIndex < 0) currentIndex = 0;
+
   const nextTab = tabs[currentIndex + 1];
   if (!nextTab) return false;
+
   const oldSection = sectionName.toLowerCase();
+  const oldQuestion = currentNumber;
   nextTab.click();
+
   const started = Date.now();
   while (Date.now() - started < 8000) {
     await wait(150);
     const newSection = currentSectionName().toLowerCase();
     const n = currentQuestionNumber();
-    if ((newSection && newSection !== oldSection) || (n && n !== currentNumber)) return true;
+    if ((newSection && newSection !== oldSection) || (n && n !== oldQuestion)) return true;
   }
   return false;
 }
@@ -128,12 +114,13 @@ async function moveToNextSection(currentNumber) {
 async function autoExtract(sendProgress) {
   if (autoRunning) throw new Error('An automatic scan is already running.');
   autoRunning = true;
-  const all = [], seen = new Set();
+  const all = [];
+  const seen = new Set();
   let sectionIndex = 0;
   let previousSectionName = currentSectionName();
 
   try {
-    for (let guard = 0; guard < 120; guard++) {
+    for (let guard = 0; guard < 140; guard++) {
       const localQn = currentQuestionNumber();
       if (!localQn) throw new Error('Could not detect the current question number.');
 
@@ -141,14 +128,17 @@ async function autoExtract(sendProgress) {
       if (previousSectionName && sectionName !== previousSectionName) {
         sectionIndex++;
         previousSectionName = sectionName;
-      } else if (!previousSectionName) previousSectionName = sectionName;
+      } else if (!previousSectionName) {
+        previousSectionName = sectionName;
+      }
 
       const key = `${sectionIndex}:${localQn}`;
       if (!seen.has(key)) {
         const solutionFound = await ensureSolution();
-        await wait(200);
+        await wait(250);
         const record = window.TestbookAnalyzer?.extract(sectionName);
         const q = record?.questions?.find(x => x.questionNumber === localQn);
+
         if (q) {
           q.section = sectionName;
           q.sectionIndex = sectionIndex + 1;
@@ -159,66 +149,97 @@ async function autoExtract(sendProgress) {
           all.push(q);
           seen.add(key);
           sendProgress?.({ done: all.length, questionNumber: q.globalQuestionNumber, section: sectionName, sectionQuestionNumber: localQn });
+        } else {
+          // Do not silently count a question that was not actually extracted.
+          sendProgress?.({ done: all.length, questionNumber: all.length + 1, section: sectionName, sectionQuestionNumber: localQn, warning: `Question ${localQn} could not be extracted.` });
         }
       }
 
-      if (!nextButtonExists() || (currentSectionQuestionCount() && localQn === currentSectionQuestionCount())) {
-        const moved = await moveToNextSection(localQn).catch(() => false);
+      const sectionCount = currentSectionQuestionCount();
+      const atSectionEnd = sectionCount && localQn >= sectionCount;
+
+      if (atSectionEnd || !nextButtonExists()) {
+        const moved = await moveToNextSection(localQn);
         if (!moved) break;
         sectionIndex++;
         previousSectionName = currentSectionName();
-        await wait(500);
+        await wait(700);
         continue;
       }
 
       await clickByText('Next', 5000);
       const nextQ = await waitForQuestionChange(localQn, 7000);
-      await wait(250);
+      await wait(300);
 
       if (nextQ && nextQ > localQn) continue;
-      const moved = await moveToNextSection(localQn).catch(() => false);
+
+      const moved = await moveToNextSection(localQn);
       if (!moved) break;
       sectionIndex++;
       previousSectionName = currentSectionName();
-      await wait(500);
+      await wait(700);
     }
 
     all.sort((a, b) => a.globalQuestionNumber - b.globalQuestionNumber);
     const base = window.TestbookAnalyzer?.extract();
-    const validation = window.TestbookAnalyzer?.extract()?.extraction || null;
+    const expected = Number(base?.test?.totalQuestions) || null;
+    const missing = expected
+      ? Array.from({ length: expected }, (_, i) => i + 1).filter(n => !all.some(q => q.globalQuestionNumber === n))
+      : [];
+    const duplicateGlobals = all.map(q => q.globalQuestionNumber).filter((n, i, arr) => arr.indexOf(n) !== i);
+    const warnings = [...(base?.extraction?.warnings || [])];
+    if (missing.length) warnings.push(`Automatic scan missing global question numbers: ${missing.join(', ')}.`);
+    if (duplicateGlobals.length) warnings.push(`Automatic scan produced duplicate global question numbers: ${[...new Set(duplicateGlobals)].join(', ')}.`);
+    if (!all.length) warnings.push('Automatic scan captured no question records.');
+
+    const sectionNames = [...new Set(all.map(q => q.section || 'Unknown'))];
+    const sections = sectionNames.map((name, index) => {
+      const qs = all.filter(q => (q.section || 'Unknown') === name);
+      const attempted = qs.filter(q => q.selectedOption != null).length;
+      const correct = qs.filter(q => q.result === 'correct').length;
+      const incorrect = qs.filter(q => q.result === 'incorrect').length;
+      const skipped = qs.filter(q => q.result === 'skipped').length;
+      const times = qs.map(q => q.timeSeconds).filter(Number.isFinite);
+      const marks = qs.map(q => q.marks).filter(Number.isFinite);
+      return {
+        index: index + 1,
+        name,
+        questionCount: qs.length,
+        attempted,
+        correct,
+        incorrect,
+        skipped,
+        accuracyPercent: attempted ? Number(((correct / attempted) * 100).toFixed(2)) : null,
+        timeSeconds: times.length ? times.reduce((a, b) => a + b, 0) : null,
+        marks: marks.length ? marks.reduce((a, b) => a + b, 0) : null
+      };
+    });
+
     return {
-      schemaVersion: '1.5.0',
+      schemaVersion: '1.5.1',
       extractedAt: new Date().toISOString(),
       pageTitle: document.title,
       url: location.href,
       test: base?.test || null,
       performance: base?.performance || null,
-      sections: [...new Map(all.map(q => [q.section || 'Unknown', true])).keys()].map((name, index) => ({
-        index: index + 1,
-        name,
-        questionCount: all.filter(q => (q.section || 'Unknown') === name).length,
-        attempted: all.filter(q => (q.section || 'Unknown') === name && q.selectedOption != null).length,
-        correct: all.filter(q => (q.section || 'Unknown') === name && q.result === 'correct').length,
-        incorrect: all.filter(q => (q.section || 'Unknown') === name && q.result === 'incorrect').length,
-        skipped: all.filter(q => (q.section || 'Unknown') === name && (q.result === 'skipped' || q.selectedOption == null)).length
-      })),
+      sections,
       extraction: {
-        ...(validation || {}),
-        expectedQuestions: Number(base?.test?.totalQuestions) || all.length || null,
+        expectedQuestions: expected,
         capturedQuestions: all.length,
-        missingQuestionNumbers: Number(base?.test?.totalQuestions)
-          ? Array.from({ length: Number(base.test.totalQuestions) }, (_, i) => i + 1).filter(n => !all.some(q => q.globalQuestionNumber === n))
-          : [],
-        warnings: [
-          ...(validation?.warnings || []),
-          ...(all.length === 0 ? ['No question records were captured.'] : []),
-          ...(base?.test?.totalQuestions && all.length < Number(base.test.totalQuestions) ? [`Automatic scan captured ${all.length} of ${base.test.totalQuestions} expected questions.`] : [])
-        ]
+        missingQuestionNumbers: missing,
+        duplicateQuestionNumbers: [...new Set(duplicateGlobals)],
+        incompleteQuestionNumbers: all.filter(q => !q.question || q.options.length < 4).map(q => q.globalQuestionNumber),
+        answerCoveragePercent: Number(((all.filter(q => q.correctAnswer || q.result).length / Math.max(all.length, 1)) * 100).toFixed(2)),
+        timingCoveragePercent: Number(((all.filter(q => q.timeSeconds != null).length / Math.max(all.length, 1)) * 100).toFixed(2)),
+        qualityScore: expected ? Math.round((Math.min(1, all.length / expected) * 70 + (all.filter(q => q.question && q.options.length >= 4).length / Math.max(all.length, 1)) * 20 + (all.filter(q => q.correctAnswer || q.result).length / Math.max(all.length, 1)) * 10) * 100 / 100) : null,
+        warnings: [...new Set(warnings)]
       },
       count: all.length,
       questions: all
     };
-  } finally { autoRunning = false; }
+  } finally {
+    autoRunning = false;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
