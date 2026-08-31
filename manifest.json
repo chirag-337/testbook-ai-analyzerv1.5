@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Testbook AI Analyzer — V1.5",
+  "version": "0.3.0",
+  "description": "Local Chrome extension for extracting structured Testbook mock-test data for AI analysis.",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://testbook.com/*",
+        "https://*.testbook.com/*"
+      ],
+      "js": [
+        "extractor.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
