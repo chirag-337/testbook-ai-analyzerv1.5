@@ -22,15 +22,16 @@ Notion storage (future V2)
 
 - Structured test metadata and performance fields when visible on the page
 - Question-level answers, results, marks, timing and answer-rate data
-- Section assignment during automatic traversal when detectable
+- Normalized section names
 - Automatic full-test scanning across questions/sections
+- Expected-question inference from Testbook's section/question navigation when explicit totals are unavailable
 - Missing-question detection
 - Duplicate-question detection
 - Incomplete-record detection
 - Answer/timing coverage metrics
 - Overall extraction-quality score
 - Human-readable extraction warnings
-- AI-ready JSON schema version `1.5.0`
+- AI-ready JSON schema version `1.5.1`
 - Popup preview of capture count, quality, score, accuracy and warnings
 
 ## Privacy
@@ -58,6 +59,7 @@ After a full scan, check:
 - Whether section names are assigned correctly
 - Whether timing and marks match Testbook
 - Whether the exported JSON contains every question you expect
+- Whether the Testbook tab can move through every section without getting stuck
 
 If Testbook changes its DOM, extraction may fail or lose fields. Record the exact page/layout and the extraction warning before changing selectors.
 
